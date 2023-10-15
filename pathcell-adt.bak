@@ -1,0 +1,19 @@
+(load "screen-adt.rkt")
+(load "position-adt.rkt")
+
+(define (make-pathcell entry exit position screen)
+
+  ; Drawing the pathcell on the screen via the Screen ADT
+  ((screen 'draw-pathcell!) position entry exit)
+
+  ; Comparing two pathcells' positions
+  (define (equal? other-pathcell)
+    (((other-pathcell 'get-position) 'compare?) position))
+    
+  (define (dispatch msg)
+    (cond ((eq? msg 'get-position) position)
+          ((eq? msg 'get-entry) entry)
+          ((eq? msg 'get-exit) exit)
+          ((eq? msg 'equal?) equal?)
+          (else (display "ERROR -- pathcell-adt dispatch message not understood: ") (display msg))))
+  dispatch)

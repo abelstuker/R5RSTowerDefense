@@ -1,0 +1,105 @@
+(load "tank-adt.rkt")
+(load "obstacle-delegate-adt.rkt")
+(load "timer-adt.rkt")
+
+(define (make-power-ups-delegate game screen)
+  (let ((cool-down-timer (make-timer 0))
+        (status 'available)
+        (active-tank #f)
+        (active-obstacle-delegate #f)
+        (tanks *UNINITIALISED*)
+        (obstacles *UNINITIALISED*))
+
+    (define (set-tanks! amount)
+      (set! tanks amount)
+      ((screen 'update-ui-element!) 'tanks tanks))
+    
+    (define (set-obstacles! amount)
+      (set! obstacles amount)
+      ((screen 'update-ui-element!) 'obstacles obstacles))
+
+    (define (collect! type bought?)
+      (cond ((eq? type 'tank) (collect-tank! bought?))
+            ((eq? type 'obstacles) (collect-obstacle! bought?))))
+    
+    (define (collect-obstacle! bought?)
+      (if bought?
+          (if (>= (game 'get-money) obstacle-price)
+              (begin ((game 'set-money!) (- (game 'get-money) obstacle-price))
+                     (set-obstacles! (+ obstacles 1)))
+              ((screen 'update-ui-element!) 'error "Niet genoeg geld om obstakels te kopen"))
+          (set-obstacles! (+ obstacles 1))))
+    (define (collect-tank! bought?)
+      (if bought?
+          (if (>= (game 'get-money) tank-price)
+              (begin ((game 'set-money!) (- (game 'get-money) tank-price))
+                     (set-tanks! (+ tanks 1)))
+              ((screen 'update-ui-element!) 'error "Niet genoeg geld om een tank te kopen"))
+          (set-tanks! (+ tanks 1))))
+
+         
+      
+    (define (update! ms screen level monsters)
+      (cond ((and (eq? status 'obstacles) active-obstacle-delegate)
+             ((active-obstacle-delegate 'update!) ms level)
+             (draw-status!))
+            ((and (eq? status 'tank) active-tank)
+             ((active-tank 'update!) ms screen level monsters))
+            ((eq? status 'cool-down)
+             (if ((cool-down-timer 'ended?))
+                 (set-status! 'available)
+                 (begin
+                   ((cool-down-timer 'update!) ms)
+                   (draw-status!))))))
+
+    (define (set-status! new-status)
+      (set! status new-status)
+      (if (eq? status 'cool-down) ((cool-down-timer 'set-time!) power-ups-cool-down-time))
+      (draw-status!))
+
+    (define (use-power-up! type path)
+      (cond ((not (eq? 'available status)) #f)
+            ((and (eq? type 'obstacle-delegate) (< 0 obstacles))
+             (set-obstacles! (- obstacles 1))
+             (set! active-obstacle-delegate (make-obstacle-delegate path))
+             (set-status! 'obstacles)
+             active-obstacle-delegate)
+            ((and (eq? type 'tank) (< 0 tanks))
+             (set-tanks! (- tanks 1))
+             (set! active-tank (make-tank path))
+             (set-status! 'tank)
+             active-tank)
+            (else #f)))
+
+    (define (deactivate-power-up! new-level? end-game?)
+      (set-status! (cond (end-game? 'unavailable)
+                         (new-level? 'available)
+                         (else 'cool-down)))
+      (set! active-tank #f)
+      (set! active-obstacle-delegate #f)
+      ((screen 'clear-game-element!) 'power-up))
+
+
+    (define (draw-status!)
+      ((screen 'update-ui-element!) 'power-ups-status
+                                 (cond ((eq? status 'cool-down) (string-append "afkoeling (" (ms->rounded-string (cool-down-timer 'get-time)) "s)"))
+                                       ((eq? status 'obstacles) (string-append "obstakels (" (ms->rounded-string ((active-obstacle-delegate 'get-timer) 'get-time)) "s)"))
+                                       ((eq? status 'tank) "tank tot einde pad")
+                                       ((eq? status 'available) "inzetbaar")
+                                       (else "-"))))
+
+    (set-tanks! 0)
+    (set-obstacles! 0)
+
+    (define (dispatch msg)
+      (cond ((eq? msg 'update!) update!)
+            ((eq? msg 'use-power-up!) use-power-up!)
+            ((eq? msg 'collect!) collect!)
+            ((eq? msg 'get-active-tank) active-tank)
+            ((eq? msg 'get-active-obstacle-delegate) active-obstacle-delegate)
+            ((eq? msg 'get-collected-tanks) tanks)
+            ((eq? msg 'get-collected-obstacles) obstacles)
+            ((eq? msg 'deactivate-power-up!) deactivate-power-up!)
+            (else (error "message not understood by make-power-ups-delegate" msg))))
+    dispatch))
+

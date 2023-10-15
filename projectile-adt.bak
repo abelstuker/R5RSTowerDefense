@@ -1,0 +1,42 @@
+(load "constants-and-auxfunctions.rkt")
+
+(define (make-projectile position movement type)
+  (let ((moved-distance 0))
+
+    ; Update function of the projectile
+    (define (update! ms monsters level screen)
+      (let ((hit-monster (collision? monsters)))
+        (cond (hit-monster (collide! hit-monster level)) ; call the collide! function if a collision was found between the projectile and a monster
+              ((>= moved-distance range) ((level 'remove-projectile!) dispatch)) ; remove the projectile from the screen when it is about to exit his radius
+              (else (set! moved-distance (+ moved-distance ((position 'move!) movement ms))) ; else add the elapsed distance in the current update time interval to the total moved-distance
+                    ((screen 'draw-projectile!) dispatch))))) ; ... and draw the projectile again
+
+    ; The collision? procedure checks, given a list of monsters, whether the current projectile collides with any of those monsters.
+    ; In that case it returns the monster itself, otherwise it returns #f.
+    (define (collision? monsters)
+      (define (check-list lst)
+        (if (null? lst)
+            #f
+            (let* ((monster-position ((car lst) 'get-position))
+                   (monster-x (monster-position 'get-x))
+                   (monster-y (monster-position 'get-y))
+                   (self-x (position 'get-x))
+                   (self-y (position 'get-y)))
+              (if (and (> (+ self-x (/ projectile-dimensions cell-width)) monster-x)
+                       (< self-x (+ (/ monster-width cell-width) monster-x))
+                       (> (+ self-y (/ projectile-dimensions cell-height)) monster-y)
+                       (< self-y (+ (/ monster-height cell-height) monster-y)))
+                  (begin (newline) (display "collision detected") (newline) (car lst))
+                  (check-list (cdr lst))))))
+      (check-list monsters))
+
+    ; The collide! executes the collision by hurting the monster and removing the projectile.
+    (define (collide! monster level)
+      ((monster 'hurt!) 1)
+      ((level 'remove-projectile!) dispatch))
+
+    (define (dispatch msg)
+      (cond ((eq? msg 'update!) update!)
+            ((eq? msg 'get-position) position)
+            (else (display "ERROR - make-projectile dispatch message not understood: ") (display msg))))
+    dispatch))

@@ -1,0 +1,178 @@
+(load "movement-adt.rkt")
+
+(define (make-monster underlying-pathcell level type)
+  
+  (define monster-configuration ; list contains: lives | speed
+    (cond ((= type 1) '(1 25)) 
+          (else (display "No monster configurations defined for type ") (display type) '())))
+  (define monster-configuration-lives car)
+  (define monster-configuration-speed cadr)
+  
+  (let ((position (make-position 0
+                                 ((underlying-pathcell 'get-position) 'get-y)
+                                 ; The following 2 lines ensure that the monsters are randomly distributed
+                                 ;   in the 5 tiles horizontally preceding the first pathcell.
+                                 (* (- monster-spread-at-start) (random)) 
+                                 (* (random) (- 1 (/ monster-height cell-height)))))
+        (movement (make-movement (monster-configuration-speed monster-configuration) 5 0))
+        (entry-direction 'left)
+        (exit-position #f)
+        (exit-direction #f)
+        (lives (monster-configuration-lives monster-configuration))
+        (path-index 0)
+        (distance-to-pathcell-check 0))
+
+    ; Update function for the monster
+    (define (update! ms path screen)
+      ; This update function also returns whether the monster continues to survive or not (survives:#t - dies:#t)
+      (when (<= distance-to-pathcell-check 0)
+        
+        (update-underlying-pathcell! path))
+      
+      (set! distance-to-pathcell-check (- distance-to-pathcell-check ((position 'move!) movement ms))) ; Moving and updating the distance until the underlying pathcell needs to be rechecked
+      (if (< (position 'get-grid-x) horizontal-cells-amount)
+          ((screen 'draw-monster!) dispatch)
+          ((level 'remove-monster!) dispatch)))
+      
+    ;(define (should-move-right? x-self x-exit)
+    ;  (<= x-self x-exit))
+    ;(define (should-move-up? y-self y-exit)
+    ;  (and (eq? exit-direction 'up)
+    ;       (>= y-self y-exit)))
+    ;(define (should-move-down? y-self y-exit)
+    ;  (and (eq? exit-direction 'down)
+    ;       (<= y-self y-exit)))
+      
+    ; We first check whether the underlying pathcell has changed since the previous move!
+    ;(update-underlying-pathcell! path)
+    ;(let ((x-self (position 'get-x))
+    ;      (y-self (position 'get-y))
+    ;      (x-relative-self (position 'get-relative-x))
+    ;      (y-relative-self (position 'get-relative-y))
+    ;      (x-exit (exit-position 'get-x))
+    ;      (y-exit (exit-position 'get-y))
+    ;      (replacement (/ (* (movement 'get-speed) ms) 10000)))))
+        
+    ;(display "replacement: ") (display replacement) (newline)
+    ;(display "exit: ") (display x-exit) (display " ") (display y-exit) (display " in direction: ") (display exit-direction) (newline)
+    ;(display "self: ") (display (exact->inexact x-self)) (display " ") (display y-self) (newline)))
+
+
+    ;        (if (eq? entry-direction 'left)
+    ;            (cond ((should-move-right? x-self x-exit) (horizontal-movement! replacement) (display "     LEFT - RIGHT"))
+    ;                  ((should-move-down? y-self y-exit) (vertical-movement! replacement))
+    ;                  ((should-move-up? y-self y-exit) (vertical-movement! (- replacement))))
+    ;            (cond ((should-move-down? y-self y-exit) (vertical-movement! replacement) (display "     NOT LEFT - RIGHT"))
+    ;                  ((should-move-up? y-self y-exit) (vertical-movement! (- replacement)))
+    ;                  ((should-move-right? x-self x-exit) (horizontal-movement! replacement))))
+                
+    ;        (newline)))
+
+
+    ; This procedure checks wheter the monster is moving over a new pathcell compared to the previous check.
+    ; If the underlying pathcell has indeed changed, it sets the underlying-pathcell to the current pathcell and
+    ;   and it calls generate-exit-position!
+    (define (update-underlying-pathcell! path)
+      
+      
+      (let ((detected-pathcell ((position 'object-in-position?) (path 'get-path) path-index)))
+        (if detected-pathcell
+            (when (or (not ((underlying-pathcell 'equal?) detected-pathcell))
+                      (not exit-position)
+                      (not exit-direction))
+              (set! path-index (+ path-index 1))
+              (set! underlying-pathcell detected-pathcell)
+              (generate-exit-position!)))))
+
+    ; Generating an exit position based on the underlying pathcell.
+    (define (generate-exit-position!)
+      (let* ((exit (underlying-pathcell 'get-exit))
+             (entry (underlying-pathcell 'get-entry))
+             (x (position 'get-x))
+             (y (position 'get-y))
+             (x-grid (position 'get-grid-x))
+             (y-grid (position 'get-grid-y))
+             (x-rel (position 'get-relative-x))
+             (y-rel (position 'get-relative-y))
+             (new-exit-position (cond
+                                  ; from LEFT to UP
+                                  ((and (eq? exit 'up)
+                                        (eq? entry 'left))
+                                   (make-position x-grid (- y-grid 1) (* (random) (- 1 (/ monster-width cell-width))) 0))
+
+                                  ; from DOWN to UP
+                                  ((eq? exit 'up) 
+                                   (make-position x-grid (- y-grid 1) x-rel 0))
+
+                                  ; from LEFT to DOWN
+                                  ((and (eq? exit 'down)
+                                        (eq? entry 'left))
+                                   (make-position x-grid (+ y-grid 1) (* (random) (- 1 (/ monster-width cell-width))) 0))
+
+                                  ; from UP to DOWN
+                                  ((eq? exit 'down) 
+                                   (make-position x-grid (+ y-grid 1) x-rel 0))
+
+                                  ; from LEFT to RIGHT
+                                  ((and (eq? exit 'right)
+                                        (eq? entry 'left))
+                                   (make-position (+ x-grid 1) y-grid 0 y-rel))
+
+                                  ; from DOWN to RIGHT
+                                  ((and (eq? exit 'right)
+                                        (eq? entry 'down))
+                                   (make-position (+ x-grid 1) y-grid 0 (* (random) (- 1 (/ monster-height cell-height)))))
+
+                                  ; from UP to RIGHT
+                                  ((and (eq? exit 'right)
+                                        (eq? entry 'up))
+                                   (make-position (+ x-grid 1) y-grid 0 (* (random) (- 1 (/ monster-height cell-height))))) ;(+ 0.1 (* (random) (- 0.9 (/ monster-height cell-height))))))
+                                      
+                                  (else (display "ERROR -- generate-exit-position! unexpected exit: ") (display (symbol->string exit)) (newline)))))
+        (set! entry-direction entry)
+        (set! exit-position new-exit-position)
+        (set! exit-direction exit)
+        
+        (set! distance-to-pathcell-check ((position 'distance-between) new-exit-position))
+        ((movement 'set-total-distances!) (- (new-exit-position 'get-x) x) (- (new-exit-position 'get-y) y))))
+
+
+    ; The collision-check procedure checks for collision with a projectile, calls the procedure to remove the monster and
+    ;   returns wheter or not a collision has been detected.
+    ;    (define (collision-check! projectiles)
+    ;      (define (check-list lst)
+    ;        (if (null? lst)
+    ;            #f
+    ;            (let* ((projectile-position ((car lst) 'get-position))
+    ;                   (projectile-x (projectile-position 'get-x))
+    ;                   (projectile-y (projectile-position 'get-y))
+    ;                   (self-x (position 'get-x))
+    ;                   (self-y (position 'get-y)))
+    ;              (if (and (< self-x projectile-x)
+    ;                       (> (+ self-x monster-width) projectile-x)
+    ;                       (< self-y projectile-y)
+    ;                       (> (+ self-y monster-height) projectile-y))
+    ;                  (begin (display "collision detected") (newline) #t)
+    ;                  (check-list (cdr lst))))))
+    ;      (check-list projectiles))
+
+
+    ; Losing lives (auw) and checking whether to die or not
+    (define (hurt! damage)
+      (display "hurt") (newline)
+      (set! lives (- lives damage))
+      (if (= 0 lives) (die!)))
+
+    ; Dying (RIP)
+    (define (die!)
+      (display "dying") (newline)
+      ((level 'remove-monster!) dispatch))
+    
+    (define (dispatch msg)
+      (cond ((eq? msg 'get-position) position)
+            ((eq? msg 'get-movement) movement)
+            ((eq? msg 'get-exit-direction) exit-direction)
+            ((eq? msg 'update!) update!)
+            ((eq? msg 'hurt!) hurt!)
+            (else (display ("ERROR -- monster-adt dispatch message not understood")))))
+    dispatch))

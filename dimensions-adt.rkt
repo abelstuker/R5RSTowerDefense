@@ -1,0 +1,6 @@
+(define (make-dimensions w h)
+  (define (dispatch msg)
+    (cond ((eq? msg 'get-w) w)
+          ((eq? msg 'get-h) h)
+          (else (display "make-dimensions Message not understood"))))
+  dispatch)

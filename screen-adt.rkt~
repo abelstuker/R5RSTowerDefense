@@ -1,0 +1,176 @@
+(#%require "GraphicalLibrary/Graphics.rkt")
+(load "constants-and-auxfunctions.rkt")
+
+(define (make-screen window-w window-h)
+  (let* ((window (make-window window-w window-h "Tower Defense (Russia Edition)"))
+         (background-layer ((window 'new-layer!)))
+         (path-layer ((window 'new-layer!)))
+         (towers-layer ((window 'new-layer!)))
+         (monsters-layer ((window 'new-layer!)))
+         (projectiles-layer ((window 'new-layer!)))
+         (overlay-layer ((window 'new-layer!)))
+         ; The following lists are associate lists with cons-cells, each containing the ADT itself in the car
+         ;   and the corresponding tile in the cdr. To make deleting from these lists easier, the first value
+         ;   of each list will always be a dummy variable.
+         (tower-tiles (list 'tower-tiles)) 
+         (monster-tiles (list 'monster-tiles)) 
+         (projectile-tiles (list 'projectile-tiles))
+         (overlay-under-tiles (cons (make-tile gamefield-width text-box-height) (make-tile gamefield-width text-box-height))))
+
+
+    ; Drawing a tile to its corresponding position as defined in the object itself
+    (define (draw-object! object tile)
+      (let* ((position (object 'get-position))
+             (x (position 'get-x))
+             (y (position 'get-y))
+             (x-px (* cell-width x))
+             (y-px (* cell-height y)))
+        ((tile 'set-x!) x-px)
+        ((tile 'set-y!) y-px)))
+
+    ; Removing an object from the screen (i.e. from its corresponding layer and list)
+    (define (remove-from-screen! object objects-list layer)
+      (define (hulp lst previous)
+        (cond ((null? lst) #f)
+              ((symbol? (car lst)) (hulp (cdr lst) (cdr previous)))
+              ((equal? (caar lst) object)
+               (display "removing from objects . . .") (newline)
+               ((layer 'remove-drawable!) (cdar lst))
+               (if (null? (cdr lst))
+                   (set-cdr! previous '())
+                   (set-cdr! previous (cdr lst))))
+              (else (display (car lst)) (newline) (hulp (cdr lst) (cdr previous)))))
+      (hulp (cdr objects-list) objects-list))
+
+    ; Retrieving the tile of an object from its corresponding associate list
+    (define (get-object-tile object objects-list add-procedure)
+      (let ((screen-object (assoc object (cdr objects-list))))
+        (if screen-object
+            (cdr screen-object) ; the car contains the actual adt, the cdr contains the tile
+            (add-procedure object))))
+
+    ; Adding a tile for an object
+    (define (add-object-tile! object objects-list objects-layer image-path . image-mask)
+      (let* ((mask-path (if (null? image-mask) #f (car image-mask)))
+             (new-tile (make-bitmap-tile image-path mask-path)))
+        (set-cdr! objects-list (cons (cons object new-tile) (cdr objects-list)))
+        ((objects-layer 'add-drawable!) new-tile)
+        new-tile))
+
+
+
+
+    
+    ; towers
+    (define (draw-tower! tower)
+      (draw-object! tower (get-tower-tile tower)))
+    (define (get-tower-tile tower) (get-object-tile tower tower-tiles add-tower-tile!))
+    (define (add-tower-tile! tower) (add-object-tile! tower tower-tiles towers-layer (drawable-file "tower-2.png") (drawable-file "tower-2-mask.png")))
+    (define (clear-all-towers!)
+      (set! tower-tiles (list 'tower-tiles)) 
+      ((towers-layer 'empty!)))
+
+    ; monsters
+    (define (draw-monster! monster)
+      (draw-object! monster (get-monster-tile monster)))
+    (define (get-monster-tile monster) (get-object-tile monster monster-tiles add-monster-tile!))
+    (define (add-monster-tile! monster) (display "drawing new monster") (newline)
+      (add-object-tile! monster monster-tiles monsters-layer (drawable-file "monster-3 35.png") (drawable-file "monster-3-mask 35.png")));;(drawable-file "monster-2 40.png") (drawable-file "monster-2-mask 40.png")))
+    (define (clear-monster! monster) (display "clear-monster! (screen)") (newline) (remove-from-screen! monster monster-tiles monsters-layer))
+
+    ; projectiles
+    (define (draw-projectile! projectile)
+      (draw-object! projectile (get-projectile-tile projectile)))
+    (define (get-projectile-tile projectile) (get-object-tile projectile projectile-tiles add-projectile-tile!))
+    (define (add-projectile-tile! projectile) (display "drawing new projectile") (newline)
+      (add-object-tile! projectile projectile-tiles projectiles-layer (drawable-file "projectile.png") (drawable-file "projectile-1-mask.png")))
+    (define (clear-projectile! projectile) (display "clear-projectile! (screen)") (newline) (remove-from-screen! projectile projectile-tiles projectiles-layer))
+    (define (clear-all-projectiles!)
+      (set! projectile-tiles (list 'projectile-tiles))
+      ((projectiles-layer 'empty!)))
+    
+    ; callbacks
+    (define (set-update-procedure! proc)
+      ((window 'set-update-callback!) proc))
+    (define (set-mouseclick-procedure! proc)
+      ((window 'set-mouse-click-callback!) proc))
+    ;(define (set-mousemove-procedure! proc)
+    ;  ((window 'set-mouse-move-callback!) proc))
+    (define (set-key-procedure! proc)
+      ((window 'set-key-callback!) proc))
+
+    
+
+    ; hovering
+    ;(define hover-tile #f)
+    ;(define (draw-hover-box! position)
+    ;  (if (not hover-tile)
+    ;      (begin
+    ;        (set! hover-tile (make-tile cell-width cell-height))
+    ;        ((hover-tile 'draw-rectangle!) 0 0 cell-width cell-height "gray")))
+    ;  ((background-layer 'add-drawable!) hover-tile);;
+
+      
+    ;  (if (not ((position 'compare?) (make-position (hover-tile 'get-x) (hover-tile 'get-x))))
+    ;      (begin
+    ;        ((hover-tile 'set-x!) (* cell-width (position 'get-x)))
+    ;        ((hover-tile 'set-y!) (* cell-height (position 'get-y))))))
+
+
+
+    
+
+    ; Procedure to draw a background tile: (used by fill-screen)
+    (define (draw-background! position)
+      (let* ((background-tile (make-bitmap-tile (drawable-file "tile-background.png")));;(drawable-file "tile-grass.png")))
+             (x-pos (position 'get-x))
+             (y-pos (position 'get-y))
+             (x-px (* cell-width x-pos))
+             (y-px (* cell-height y-pos)))
+        ((background-layer 'add-drawable!) background-tile)
+        ((background-tile 'set-x!) x-px)
+        ((background-tile 'set-y!) y-px)))
+    
+    ; Procedure to draw a single pathcell:
+    (define (draw-pathcell! position entry exit)
+      (let* (;(img-path (string-append "tile-" (symbol->string entry) "-" (symbol->string exit))) -> used when we need a custom pathcell for each possible entry and exit direction
+             (pathcell-tile (make-bitmap-tile (drawable-file "tile-path.png")));; (drawable-file (string-append img-path "-1-100.png"))))
+             (original-x (position 'get-x))
+             (original-y (position 'get-y)))
+        ((path-layer 'add-drawable!) pathcell-tile)
+        ((pathcell-tile 'set-x!) (* cell-width original-x))
+        ((pathcell-tile 'set-y!) (* cell-height original-y))))
+
+    ; Procedure to write text under the field of play.
+    (define (write-text-under! text1 . text2)
+      (((car overlay-under-tiles) 'clear!))
+      (((cdr overlay-under-tiles) 'clear!))
+      (((car overlay-under-tiles) 'draw-text!) text1 text-size 0 0 "white")
+      ((overlay-layer 'add-drawable!) (car overlay-under-tiles))
+      (((car overlay-under-tiles) 'set-x!) overlay-indent)
+      (((car overlay-under-tiles) 'set-y!) (+ gamefield-height text-padding))
+      (when (not (null? text2))
+          (((cdr overlay-under-tiles) 'draw-text!) (car text2) text-size 0 0 "white")
+          ((overlay-layer 'add-drawable!) (cdr overlay-under-tiles))
+          (((cdr overlay-under-tiles) 'set-x!) overlay-indent)
+          (((cdr overlay-under-tiles) 'set-y!) (+ gamefield-height text-box-height text-padding))))
+
+
+    (define (dispatch msg)
+      (cond ((eq? msg 'draw-tower!) draw-tower!)
+            ((eq? msg 'clear-all-towers!) clear-all-towers!)
+            ((eq? msg 'draw-projectile!) draw-projectile!)
+            ((eq? msg 'clear-projectile!) clear-projectile!)
+            ((eq? msg 'clear-all-projectiles!) clear-all-projectiles!)
+            ((eq? msg 'draw-monster!) draw-monster!)
+            ((eq? msg 'clear-monster!) clear-monster!)
+            ((eq? msg 'set-update-procedure!) set-update-procedure!)
+            ((eq? msg 'set-mouseclick-procedure!) set-mouseclick-procedure!)
+            ;((eq? msg 'set-mousemove-procedure!) set-mousemove-procedure!)
+            ((eq? msg 'set-key-procedure!) set-key-procedure!)
+            ((eq? msg 'draw-hover-box!) draw-hover-box!)
+            ((eq? msg 'draw-background!) draw-background!)
+            ((eq? msg 'draw-pathcell!) draw-pathcell!)
+            ((eq? msg 'write-text-under!) write-text-under!)
+            (else (display msg) (display (" : ERROR -- screen-adt dispatch message not understood")))))
+    dispatch))
