@@ -1,0 +1,106 @@
+(load "position-adt.rkt")
+(load "pathcell-adt.rkt")
+
+(define (make-path screen instructions)
+
+  
+  (define path (list->vector 
+                (let ((start-row (car instructions)))
+
+                  (define (hulp lst prev row col)
+                    (if (null? lst)
+                        '()
+                        (let ((current (car lst)))
+                          (cond ((and (eq? current 'R)
+                                      (eq? prev 'R))
+                                 (cons (make-pathcell 'left
+                                                      'right
+                                                      (make-position col row))
+                                       (hulp (cdr lst) current row (+ col 1))))
+                                ((and (eq? current 'R)
+                                      (eq? prev 'U))
+                                 (cons (make-pathcell 'down
+                                                      'right
+                                                      (make-position col row))
+                                       (hulp (cdr lst) current row (+ col 1))))
+                                ((and (eq? current 'R)
+                                      (eq? prev 'D))
+                                 (cons (make-pathcell 'up
+                                                      'right
+                                                      (make-position col row))
+                                       (hulp (cdr lst) current row (+ col 1))))
+                                ((and (eq? current 'U)
+                                      (eq? prev 'R))
+                                 (cons (make-pathcell 'left
+                                                      'up
+                                                      (make-position col row))
+                                       (hulp (cdr lst) current (- row 1) col)))
+                                ((and (eq? current 'U)
+                                      (eq? prev 'U))
+                                 (cons (make-pathcell 'down
+                                                      'up
+                                                      (make-position col row))
+                                       (hulp (cdr lst) current (- row 1) col)))
+                                ((and (eq? current 'D)
+                                      (eq? prev 'R))
+                                 (cons (make-pathcell 'left
+                                                      'down
+                                                      (make-position col row))
+                                       (hulp (cdr lst) current (+ row 1) col)))
+                                ((and (eq? current 'D)
+                                      (eq? prev 'D))
+                                 (cons (make-pathcell 'up
+                                                      'down
+                                                      (make-position col row))
+                                       (hulp (cdr lst) current (+ row 1) col)))
+                                (else (display "unknown path instruction"))))))
+
+                  (if (and (number? start-row)
+                           (< start-row vertical-cells-amount))
+                      (hulp (cdr instructions) 'R start-row 0) ; note that prev is initially 'R since the path is generated beginning from column 0
+                      (error "wrong formattation of instructions: first element should be the index of the row where the path starts")))))
+          
+          
+
+    ;  (define (generate-path)
+    ;    (define (iter path )
+    ;      (newline) (display "path iter: ")
+    ;      (let* ((curr (if (null? path) #f ((car path) 'get-new-position)))
+    ;             (last (if (or (not curr) (null? (cdr path))) #f ((cadr path) 'get-new-position))))
+    ;          
+    ;        (cond ((null? path) (display "1c ") (iter (cons (make-pathcell (vector 'right)
+    ;                                                                       'left
+    ;                                                                       (make-position 0 (+ 1 (random (- vertical-cells-amount 2))))
+    ;                                                                       screen (length path))
+    ;                                                        path)))
+    ;              ((null? (cdr path)) (display "2c ") (iter (cons (make-pathcell (vector 'right 'down 'up)
+    ;                                                                             'left
+    ;                                                                             curr
+    ;                                                                             screen (length path)) path))) ; 
+    ;              ((equal? (curr 'get-x) (- horizontal-cells-amount 0)) (display "3c ") (reverse path))
+    ;              ((< (curr 'get-y) 1) (display "4c ") 
+    ;                                   (if (equal? (curr 'get-y) (- (last 'get-y) 1))
+    ;                                       (iter (cons (make-pathcell (vector 'right) 'down curr screen (length path)) path))
+    ;                                       (iter (cons (make-pathcell (vector 'right 'down) 'left curr screen (length path)) path))))
+    ;              ((> (curr 'get-y) (- vertical-cells-amount 2)) (display "5c ") 
+    ;                                                             (if (equal? (curr 'get-y) (+ (last 'get-y) 1))
+    ;                                                                 (iter (cons (make-pathcell (vector 'right) 'up  curr screen (length path)) path))
+    ;                                                                 (iter (cons (make-pathcell (vector 'right 'up) 'left curr screen (length path)) path))))
+    ;              ((equal? (curr 'get-y) (- (last 'get-y) 1)) (display "6c ") (iter (cons (make-pathcell (vector 'right 'up) 'down curr screen (length path)) path)))
+    ;              ((equal? (curr 'get-y) (+ (last 'get-y) 1)) (display "7c ") (iter (cons (make-pathcell (vector 'right 'down) 'up curr screen (length path)) path)))
+    ;              (else (display "else c") (iter (cons (make-pathcell (vector 'right 'up 'down 'up 'down) 'left curr screen (length path)) path))))))
+    ;    (iter '()))
+
+
+    (define (get-first-pathcell)
+      (vector-ref path 0))
+
+    ;    (define (get-pathcell-from-position position)
+    ;      ((screen 'object-in-position?) path position))
+                
+    (define (dispatch msg)
+      (cond ((eq? msg 'get-path) path)
+            ((eq? msg 'get-first-pathcell) get-first-pathcell)
+            (else (display "ERROR -- path-adt dispatch message not understood: ") (display msg))))
+    dispatch)
+  

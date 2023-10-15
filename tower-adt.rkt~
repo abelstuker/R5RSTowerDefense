@@ -1,0 +1,71 @@
+(load "projectile-adt.rkt")
+(load "constants-and-auxfunctions.rkt")
+
+(define (make-tower position level type)
+  
+  (define tower-configuration
+      (cond ((= type 1) '(2 5000 80))
+            (else (display "No tower configurations defined for type ") (display type) '())))
+  (define tower-configuration-range car)
+  (define tower-configuration-frequency cadr)
+  (define tower-configuration-projectile-speed caddr)
+  
+  (let ((range (tower-configuration-range tower-configuration))
+        (frequency (tower-configuration-frequency tower-configuration))
+        (projectile-speed (tower-configuration-projectile-speed tower-configuration))
+        (projectile-clock 0))
+
+
+    ; Update function of the tower
+    (define (update! ms monsters)
+      (if (< projectile-clock frequency) ; checking whether it is time to fire or not
+          (set! projectile-clock (+ projectile-clock ms)) 
+          (let ((closest-monster (monster-in-range? monsters)))
+            (when closest-monster
+              (set! projectile-clock 0)
+              (let ((center-position (make-position (position 'get-grid-x) (position 'get-grid-y) 0.5 0.5))
+                    (margin (collision-margin closest-monster)))
+                (display "making projectile") (newline)
+                ((level 'add-projectile!) (make-projectile center-position
+                                                      (make-movement
+                                                       projectile-speed
+                                                       (+ (- ((closest-monster 'get-position) 'get-x) (center-position 'get-x)) (car margin))
+                                                       (+ (- ((closest-monster 'get-position) 'get-y) (center-position 'get-y)) (cdr margin)))
+                                                      range)))))))
+
+    ; Procedure returns the closest monster in range
+    (define (monster-in-range? monsters)
+      (let ((closest-distance 99999)
+            (closest-monster #f))
+        (for-each (lambda (monster)
+                    (let* ((monster-position (monster 'get-position))
+                           (distance ((position 'distance-to-other-position) monster-position))
+                           ; Line-up monsters are monsters that are still moving outside the game field (in front of the first path tile)
+                           ;   and may therefore not be attacked.
+                           (line-up-monster? (< (monster-position 'get-x) 0))) 
+                      (when (and (not line-up-monster?)
+                                 (< distance range)
+                                 (< distance closest-distance))
+                        (set! closest-distance distance)
+                        (set! closest-monster monster))))
+                  monsters)
+        closest-monster))
+
+    ; Procedure to calculate the collision margin:
+    (define (collision-margin monster)
+      (let* ((monster-bullet-speed-ratio (/ ((monster 'get-movement) 'get-speed) projectile-speed))
+             (margin (* collision-margin-coefficient monster-bullet-speed-ratio))
+             (exit-direction (monster 'get-exit-direction)))
+        (cond ((eq? exit-direction 'down) (cons 0 margin))
+              ((eq? exit-direction 'up) (cons 0 (- margin)))
+              ((eq? exit-direction 'right) (cons margin 0))
+              (else (display "no valid exit direction for calculating collision margin") (newline)))))
+      
+  
+
+    (define (dispatch msg)
+      (cond ((eq? msg 'get-position) position)
+            ((eq? msg 'update!) update!)
+            (else (display ("ERROR -- tower-adt dispatch message not understood: ")) (display msg))))
+  
+    dispatch))

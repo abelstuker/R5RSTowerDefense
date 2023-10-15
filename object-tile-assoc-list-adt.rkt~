@@ -1,0 +1,32 @@
+
+(define (make-object-tile-assoc-list)
+  (let ((lst (list 'bla)))
+
+    ; Retrieving the tile of an object from the associate list
+    (define (get-object-tile object objects-list add-procedure)
+      (let ((association (assoc object (cdr objects-list))))
+        (if association
+            (cdr association) ; the car contains the actual adt, the cdr contains the tile
+            (add-procedure object))))
+
+    (define (add-object-and-tile! obj tile)
+      (set-cdr! lst (cons (cons obj tile) (cdr lst))))
+
+    (define (remove-object! obj)
+      (define (hulp obj-lst prev)
+        (cond ((null? obj-lst) #f)
+              ((eq? (car obj-lst) obj)
+               (set-cdr! prev (cdr obj-lst))
+               (set-car! lst (- (car lst) 1))
+               (display "removed") (newline)
+               #t)
+              (else (hulp (cdr obj-lst) (cdr prev)))))
+      (hulp (cdr lst) lst))
+
+    (define (dispatch msg)
+      (cond ((eq? msg 'get-count) (count))
+            ((eq? msg 'get-objects) (obj-list))
+            ((eq? msg 'add-object!) add-object!)
+            ((eq? msg 'remove-object!) remove-object!)
+            (else (display "ERROR - no dispatch message found for make-object-list"))))
+    dispatch))

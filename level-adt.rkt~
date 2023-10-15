@@ -1,0 +1,156 @@
+(#%require (only racket/base random))
+(load "constants-and-auxfunctions.rkt")
+(load "screen-adt.rkt")
+(load "position-adt.rkt")
+(load "tower-adt.rkt")
+(load "monster-adt.rkt")
+(load "path-adt.rkt")
+
+(define (make-level screen level-number)
+  (let ((path #f) 
+        (towers (list 0)) ; headed list with the amount of towers as header value
+        (monsters (list 0)) ; headed list with the amount of monsters as header value
+        (projectiles (list 0)) ; headed list with the amount of projectiles as header value
+        (rest-waves #f))
+
+    ; mouse-click
+    (define (mouseclick key status x y)
+      (let* ((x-pos (quotient x cell-width))
+             (y-pos (quotient y cell-height))
+             (position (make-position x-pos y-pos)))
+        (if (and (eq? key 'left)
+                 (eq? status 'pressed))
+            (add-tower! position))))
+
+    ; key-press
+    (define (key-press status key)
+      (display "status: ") (display status) (display "key: ") (display key) (newline)
+      (if (and (eq? status 'pressed)
+               (eq? key #\space)
+               (= 0 (car monsters)))
+          (begin (display "key to startwave") (newline) (start-wave!))) ; in phase 2: start new level using Game ADT when rest-waves is null
+      (if (and (eq? status 'pressed)
+               (eq? key #\r)
+               (= 0 (car monsters)))
+          (begin (display "key to reset") (newline) (restart!))))
+    
+
+    ; remove object from list
+    (define (remove-object! object list)
+      (define (hulp lst previous)
+        (cond ((null? lst) #f)
+              ((equal? (car lst) object)
+               (display "removing object . . .") (newline)
+               (if (null? (cdr lst))
+                   (set-cdr! previous '())
+                   (set-cdr! previous (cdr lst)))
+               (set-car! list (- (car list) 1)))
+              (else (hulp (cdr lst) (cdr previous)))))
+      (hulp (cdr list) list))
+
+    ; Procedure adds an object to list
+    (define (add-object! object list)
+      (set-car! list (+ (car list) 1))
+      (set-cdr! list (cons object (cdr list))))
+    
+    ; Procedure updates all the game objects
+    (define (update! ms)
+      (if (not (= 0 (car monsters)))
+          ((screen 'write-text-under!) (string-append "Monsters to kill: " (number->string (car monsters))) (string-append "Towers on the field: " (number->string (car towers))))
+          ((screen 'write-text-under!) "Press the spacebar to start another wave, press r to restart the game."))
+     
+      ; updating the monsters
+      (for-each (lambda (el) ((el 'update!) ms path screen))
+                (cdr monsters))
+      ; updating the towers
+      (for-each (lambda (el) ((el 'update!) ms (cdr monsters)))
+                (cdr towers))
+      ; updating the projectiles
+      (for-each (lambda (el) ((el 'update!) ms (cdr monsters) dispatch screen))
+                (cdr projectiles)))
+      
+
+    ; Procedures to add and remove MONSTERS:
+    (define (add-monster!)
+      (let* ((first-pathcell ((path 'get-first-pathcell)))
+             (new-monster (make-monster first-pathcell dispatch 1))
+             (monster-position (new-monster 'get-position)))
+        (add-object! new-monster monsters)
+        new-monster))
+
+    (define (remove-monster! monster)
+      ((screen 'clear-monster!) monster)
+      (remove-object! monster monsters)
+      (display "remove-monster! done (level)") (newline))
+
+    ; Procedures to add TOWERS (removing towers will be introduced in phase 2):
+    (define (add-tower! position)
+      (if (and (not ((position 'object-in-position?) (path 'get-path)))
+               (not ((position 'object-in-position?) (cdr towers)))
+               (< (position 'get-grid-x) horizontal-cells-amount)
+               (< (position 'get-grid-y) vertical-cells-amount))
+          (let ((tower (make-tower position dispatch 1)))
+            (display "adding a tower") (newline)
+            (add-object! tower towers)
+            ((screen 'draw-tower!) tower))
+          (begin (display "adding a tower is not possible at this location") (newline))))
+
+    ; Procedures to add and remove PROJECTILES:
+    (define (add-projectile! projectile)
+      (add-object! projectile projectiles))
+
+    (define (remove-projectile! projectile)
+      ((screen 'clear-projectile!) projectile)
+      (remove-object! projectile projectiles)
+      (display "remove-projectile! done (level)") (newline))
+
+    ; Procedure makes a number of monsters spawn:
+    (define (monster-spawner! count)
+      (if (> count 0)
+          (begin
+            ((screen 'draw-monster!) (add-monster!))
+            (monster-spawner! (- count 1)))))
+
+    ; Start procedure:
+    (define (start!)
+      (set! rest-waves wave-instructions)
+      (set! path (make-path screen path-instructions))
+      ((screen 'set-update-procedure!) update!)
+      ((screen 'set-mouseclick-procedure!) mouseclick)
+      ((screen 'set-key-procedure!) key-press)
+      (start-wave!))
+
+    ; Procedure starts a wave:
+    (define (start-wave!)
+      (display "start wave")
+      (cond ((number? rest-waves) 
+             (monster-spawner! rest-waves))
+            ((not (null? rest-waves))
+             (monster-spawner! (car rest-waves))
+             (set! rest-waves (cdr rest-waves)))))
+
+    ; Procedure resets the current level:
+    (define (restart!)
+      (set! towers (list 0))
+      ((screen 'clear-all-towers!))
+      (set! monsters (list 0))
+      (set! projectiles (list 0))
+      ((screen 'clear-all-projectiles!))
+      (start!))
+             
+
+    (define path-instructions
+      (cond ((= level-number 1) '(3 R U U R R R D D D R R R R U U R R))
+            (else (display "No path instructions defined for level: ") (dispaly level-number) '())))
+
+    (define wave-instructions
+      (cond ((= level-number 1) 10)
+            (else (display "No wave instructions defined for level: ") (display level-number) '())))
+
+    (define (dispatch msg)
+      (cond
+        ((eq? msg 'start!) start!)
+        ((eq? msg 'remove-monster!) remove-monster!)
+        ((eq? msg 'add-projectile!) add-projectile!)
+        ((eq? msg 'remove-projectile!) remove-projectile!)))
+    dispatch))
